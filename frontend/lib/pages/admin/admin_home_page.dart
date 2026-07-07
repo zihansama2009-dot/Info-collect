@@ -150,67 +150,125 @@ class _AdminHomePageState extends ConsumerState<AdminHomePage> {
         icon: const Icon(Icons.add),
         label: const Text('新建任务'),
       ),
-      body: FutureBuilder<List<Task>>(
-        future: _future,
-        builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snap.hasError) {
-            return Center(child: Text('加载失败: ${snap.error}'));
-          }
-          final tasks = snap.data!;
-          if (tasks.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.inbox, size: 64, color: cs.outline),
-                  const SizedBox(height: 12),
-                  Text('暂无任务，点击右下角创建', style: TextStyle(color: cs.onSurfaceVariant)),
-                ],
-              ),
-            );
-          }
-          return ListView.separated(
+      body: Column(
+        children: [
+          Container(
             padding: EdgeInsets.all(m3e.spacing.md),
-            itemCount: tasks.length,
-            separatorBuilder: (_, __) => SizedBox(height: m3e.spacing.sm),
-            itemBuilder: (context, i) {
-              final t = tasks[i];
-              return Card(
-                elevation: 0,
-                color: cs.surfaceContainerLow,
-                shape: m3e.shapes.large,
-                child: ListTile(
-                  contentPadding: EdgeInsets.symmetric(
-                      horizontal: m3e.spacing.md, vertical: m3e.spacing.xs),
-                  title: Text(t.title, style: m3e.typography.titleMedium),
-                  subtitle: Text(
-                    t.isOpen ? '进行中 · 点击查看详情' : '已关闭',
-                    style: TextStyle(color: t.isOpen ? cs.primary : cs.outline),
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Chip(
-                        label: Text(t.isOpen ? '开放' : '关闭'),
-                        backgroundColor:
-                            t.isOpen ? cs.primaryContainer : cs.surfaceContainerHighest,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Card(
+                    elevation: 0,
+                    color: cs.primaryContainer,
+                    shape: m3e.shapes.large,
+                    child: InkWell(
+                      onTap: () => context.go('/admin/students'),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Padding(
+                        padding: EdgeInsets.all(m3e.spacing.md),
+                        child: Row(
+                          children: [
+                            Icon(Icons.people, color: cs.primary),
+                            SizedBox(width: m3e.spacing.sm),
+                            Expanded(child: Text('学生管理', style: m3e.typography.titleMedium)),
+                            Icon(Icons.chevron_right, color: cs.primary),
+                          ],
+                        ),
                       ),
-                      IconButton(
-                        tooltip: '删除任务',
-                        icon: Icon(Icons.delete_outline, color: cs.error),
-                        onPressed: () => _showDeleteConfirmation(t),
-                      ),
-                    ],
+                    ),
                   ),
-                  onTap: () => context.go('/admin/tasks/${t.id}'),
                 ),
-              );
-            },
-          );
-        },
+                SizedBox(width: m3e.spacing.sm),
+                Expanded(
+                  child: Card(
+                    elevation: 0,
+                    color: cs.secondaryContainer,
+                    shape: m3e.shapes.large,
+                    child: InkWell(
+                      onTap: () => context.go('/admin/groups'),
+                      borderRadius: BorderRadius.circular(16),
+                      child: Padding(
+                        padding: EdgeInsets.all(m3e.spacing.md),
+                        child: Row(
+                          children: [
+                            Icon(Icons.group_work, color: cs.secondary),
+                            SizedBox(width: m3e.spacing.sm),
+                            Expanded(child: Text('组管理', style: m3e.typography.titleMedium)),
+                            Icon(Icons.chevron_right, color: cs.secondary),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: FutureBuilder<List<Task>>(
+              future: _future,
+              builder: (context, snap) {
+                if (snap.connectionState != ConnectionState.done) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snap.hasError) {
+                  return Center(child: Text('加载失败: ${snap.error}'));
+                }
+                final tasks = snap.data!;
+                if (tasks.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.inbox, size: 64, color: cs.outline),
+                        const SizedBox(height: 12),
+                        Text('暂无任务，点击右下角创建', style: TextStyle(color: cs.onSurfaceVariant)),
+                      ],
+                    ),
+                  );
+                }
+                return ListView.separated(
+                  padding: EdgeInsets.all(m3e.spacing.md),
+                  itemCount: tasks.length,
+                  separatorBuilder: (_, __) => SizedBox(height: m3e.spacing.sm),
+                  itemBuilder: (context, i) {
+                    final t = tasks[i];
+                    return Card(
+                      elevation: 0,
+                      color: cs.surfaceContainerLow,
+                      shape: m3e.shapes.large,
+                      child: ListTile(
+                        contentPadding: EdgeInsets.symmetric(
+                            horizontal: m3e.spacing.md, vertical: m3e.spacing.xs),
+                        title: Text(t.title, style: m3e.typography.titleMedium),
+                        subtitle: Text(
+                          t.isOpen ? '进行中 · 点击查看详情' : '已关闭',
+                          style: TextStyle(color: t.isOpen ? cs.primary : cs.outline),
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Chip(
+                              label: Text(t.isOpen ? '开放' : '关闭'),
+                              backgroundColor:
+                                  t.isOpen ? cs.primaryContainer : cs.surfaceContainerHighest,
+                            ),
+                            IconButton(
+                              tooltip: '删除任务',
+                              icon: Icon(Icons.delete_outline, color: cs.error),
+                              onPressed: () => _showDeleteConfirmation(t),
+                            ),
+                          ],
+                        ),
+                        onTap: () => context.go('/admin/tasks/${t.id}'),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
       ),
     );
   }
