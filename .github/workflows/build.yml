@@ -1,0 +1,118 @@
+name: Build Multi-Platform Binaries
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-frontend:
+    name: Build Flutter Web
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+          cache-key: flutter-web
+
+      - name: Build Web
+        working-directory: frontend
+        run: flutter build web --base-href /
+
+      - name: Upload web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: frontend/build/web/
+          retention-days: 1
+
+  build-backend:
+    name: Build ${{ matrix.target }}
+    needs: build-frontend
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-amd64
+            runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          - target: linux-arm64
+            runner: ubuntu-latest
+            goos: linux
+            goarch: arm64
+          - target: windows-amd64
+            runner: windows-latest
+            goos: windows
+            goarch: amd64
+          - target: darwin-amd64
+            runner: macos-latest
+            goos: darwin
+            goarch: amd64
+          - target: darwin-arm64
+            runner: macos-latest
+            goos: darwin
+            goarch: arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download web artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: backend/web/
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache-dependency-path: backend/go.sum
+
+      - name: Build binary
+        working-directory: backend
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 1
+        run: |
+          $suffix = if ("${{ matrix.goos }}" -eq "windows") { ".exe" } else { "" }
+          go build -ldflags="-s -w" -o "class-form$suffix" main.go
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: class-form-${{ matrix.target }}
+          path: backend/class-form*
+          retention-days: 14
+
+  release:
+    name: Create GitHub Release
+    needs: build-backend
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          prerelease: false
+          files: artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
