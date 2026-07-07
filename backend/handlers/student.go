@@ -12,15 +12,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// ListStudents 获取任务的学生名单
-func ListStudents(c *gin.Context) {
-	taskID := c.Param("id")
-	var students []models.Student
-	models.DB.Where("task_id = ?", taskID).Order("student_no asc").Find(&students)
-	c.JSON(http.StatusOK, students)
-}
-
-// ImportStudents 从上传的 Excel 导入学生名单
+// ImportStudents 从上传的 Excel 导入学生名单（已废弃，保留用于兼容）
 // Excel 表头需包含：学号、姓名、密码
 func ImportStudents(c *gin.Context) {
 	taskID := c.Param("id")
@@ -48,7 +40,6 @@ func ImportStudents(c *gin.Context) {
 		return
 	}
 
-	// 解析表头定位列索引
 	header := rows[0]
 	idxNo, idxName, idxPass := -1, -1, -1
 	for i, h := range header {
@@ -70,7 +61,6 @@ func ImportStudents(c *gin.Context) {
 	tid := parseUint(taskID)
 	count := 0
 	err = models.DB.Transaction(func(tx *gorm.DB) error {
-		// 先清空旧名单及对应提交
 		if err := tx.Where("task_id = ?", tid).Delete(&models.Student{}).Error; err != nil {
 			return err
 		}
@@ -87,7 +77,7 @@ func ImportStudents(c *gin.Context) {
 			if no == "" || name == "" {
 				continue
 			}
-			pass := "123456" // 默认密码
+			pass := "123456"
 			if idxPass >= 0 && idxPass < len(row) && strings.TrimSpace(row[idxPass]) != "" {
 				pass = strings.TrimSpace(row[idxPass])
 			}
@@ -108,39 +98,6 @@ func ImportStudents(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "导入成功", "count": count})
-}
-
-// ResetStudentPassword 重置单个学生密码
-func ResetStudentPassword(c *gin.Context) {
-	id := c.Param("sid")
-	var req struct {
-		Password string `json:"password" binding:"required"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
-		return
-	}
-	models.DB.Model(&models.Student{}).Where("id = ?", id).Update("password", req.Password)
-	c.JSON(http.StatusOK, gin.H{"message": "已重置"})
-}
-
-// DeleteStudent 删除学生（事务级联删除提交记录）
-func DeleteStudent(c *gin.Context) {
-	id := c.Param("sid")
-	err := models.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Where("student_id = ?", id).Delete(&models.Submission{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Delete(&models.Student{}, id).Error; err != nil {
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "删除失败"})
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"message": "已删除"})
 }
 
 // parseUint 字符串转 uint

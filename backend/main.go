@@ -22,9 +22,19 @@ import (
 //go:embed web/*
 var webFS embed.FS
 
-const APP_VERSION = "5.0.0"
+var APP_VERSION string
+
+func initVersion() {
+	data, err := os.ReadFile("VERSION")
+	if err != nil {
+		APP_VERSION = "dev"
+		return
+	}
+	APP_VERSION = strings.TrimSpace(string(data))
+}
 
 func main() {
+	initVersion()
 	// 1. 初始化数据库
 	dbPath := getEnv("DB_PATH", "data.db")
 	db, err := gorm.Open(sqlite.Open(dbPath+"?_journal_mode=WAL&_busy_timeout=5000"), &gorm.Config{
@@ -41,9 +51,12 @@ func main() {
 	}
 
 	// 自动迁移
-	if err := db.AutoMigrate(&models.User{}, &models.Task{}, &models.Student{}, &models.FormField{}, &models.Submission{}); err != nil {
+	if err := db.AutoMigrate(&models.User{}, &models.Task{}, &models.Student{}, &models.FormField{}, &models.Submission{}, &models.StudentUser{}, &models.Group{}, &models.GroupMember{}, &models.TaskAssignment{}, &models.TaskGroupAssignment{}); err != nil {
 		log.Fatalf("数据库迁移失败: %v", err)
 	}
+
+	// 数据迁移：将旧版 Student 记录迁移为全局 StudentUser
+	handlers.MigrateToGlobalUsers(db)
 
 	// 初始化默认管理员（数据库无管理员时随机生成凭证）
 	if result, err := handlers.InitAdmin(APP_VERSION); err != nil {
@@ -93,19 +106,13 @@ func main() {
 			admin.DELETE("/tasks/:id", handlers.DeleteTask)
 			admin.GET("/tasks/:id/stats", handlers.TaskStats)
 
-			// 表单字段
-			admin.GET("/tasks/:id/fields", handlers.ListFormFields)
-			admin.PUT("/tasks/:id/fields", handlers.SaveFormFields)
+		// 表单字段
+		admin.GET("/tasks/:id/fields", handlers.ListFormFields)
+		admin.PUT("/tasks/:id/fields", handlers.SaveFormFields)
 
-			// 学生名单
-			admin.GET("/tasks/:id/students", handlers.ListStudents)
-			admin.POST("/tasks/:id/students/import", handlers.ImportStudents)
-			admin.PUT("/students/:sid/password", handlers.ResetStudentPassword)
-			admin.DELETE("/students/:sid", handlers.DeleteStudent)
-
-			// 提交查看与导出
-			admin.GET("/tasks/:id/submissions", handlers.ListSubmissions)
-			admin.GET("/tasks/:id/export", handlers.ExportTaskData)
+		// 提交查看与导出
+		admin.GET("/tasks/:id/submissions", handlers.ListSubmissions)
+		admin.GET("/tasks/:id/export", handlers.ExportTaskData)
 		}
 
 		// 学生接口
@@ -113,7 +120,29 @@ func main() {
 		{
 			student.GET("/submission", handlers.GetMySubmission)
 			student.POST("/submit", handlers.SubmitForm)
+			student.GET("/tasks/available", handlers.GetAvailableTasks)
+			student.PUT("/password", handlers.ChangeStudentPassword)
 		}
+
+		// 全局学生管理（管理员）
+		admin.GET("/students", handlers.ListStudents)
+		admin.POST("/students", handlers.CreateStudent)
+		admin.PUT("/students/:id/password", handlers.ResetStudentPassword)
+		admin.DELETE("/students/:id", handlers.DeleteStudent)
+
+		// 组管理（管理员）
+		admin.GET("/groups", handlers.ListGroups)
+		admin.POST("/groups", handlers.CreateGroup)
+		admin.PUT("/groups/:id", handlers.UpdateGroup)
+		admin.DELETE("/groups/:id", handlers.DeleteGroup)
+		admin.POST("/groups/:id/members", handlers.AddGroupMember)
+		admin.DELETE("/groups/:id/members/:user_id", handlers.RemoveGroupMember)
+		admin.GET("/groups/:id/members", handlers.ListGroupMembers)
+
+		// 任务分配（管理员）
+		admin.POST("/tasks/:id/assign/users", handlers.AssignUsersToTask)
+		admin.POST("/tasks/:id/assign/groups", handlers.AssignGroupsToTask)
+		admin.GET("/tasks/:id/assignments", handlers.GetTaskAssignments)
 	}
 
 	// 4. 静态资源：Flutter Web 产物

@@ -6,40 +6,38 @@ import '../../providers/providers.dart';
 import '../../theme/m3e_theme.dart';
 
 class StudentLoginPage extends ConsumerStatefulWidget {
-  final int? prefillTaskId;
-  const StudentLoginPage({super.key, this.prefillTaskId});
+  const StudentLoginPage({super.key});
 
   @override
   ConsumerState<StudentLoginPage> createState() => _StudentLoginPageState();
 }
 
 class _StudentLoginPageState extends ConsumerState<StudentLoginPage> {
-  late final _taskCtrl = TextEditingController(
-      text: widget.prefillTaskId == null ? '' : widget.prefillTaskId.toString());
   final _noCtrl = TextEditingController();
   final _passCtrl = TextEditingController();
   bool _loading = false;
   String? _error;
 
   Future<void> _login() async {
-    final tid = int.tryParse(_taskCtrl.text.trim());
-    if (tid == null) {
-      setState(() => _error = '请输入有效的任务编号');
-      return;
-    }
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       await ref.read(authProvider.notifier).loginStudent(
-            tid,
             _noCtrl.text.trim(),
             _passCtrl.text,
           );
-      if (mounted) context.go('/student/fill');
+      if (mounted) {
+        final mustChange = await ref.read(mustChangePasswordProvider.future);
+        if (mustChange) {
+          context.go('/student/change-password');
+        } else {
+          context.go('/student/tasks');
+        }
+      }
     } catch (_) {
-      setState(() => _error = '学号或密码错误，或任务已关闭');
+      setState(() => _error = '学号或密码错误');
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -66,16 +64,6 @@ class _StudentLoginPageState extends ConsumerState<StudentLoginPage> {
                   SizedBox(height: m3e.spacing.sm),
                   Text('学生填报登录', style: m3e.typography.headlineSmall),
                   SizedBox(height: m3e.spacing.lg),
-                  TextField(
-                    controller: _taskCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: '任务编号',
-                      prefixIcon: Icon(Icons.task_alt),
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  SizedBox(height: m3e.spacing.md),
                   TextField(
                     controller: _noCtrl,
                     decoration: const InputDecoration(

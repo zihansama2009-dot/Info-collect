@@ -9,8 +9,8 @@ class ApiService {
   // 非 final：init() 可能被多次调用（如登出后重新初始化）
   late Dio dio;
 
-  /// Web 端同源部署留空；APK 指向远端 API
-  String baseUrl = kIsWeb ? '' : 'https://info.mczihan.link:1443';
+  /// Web 端同源部署留空；APK 通过 dart-define 注入后端地址
+  String baseUrl = const String.fromEnvironment('BACKEND_URL', defaultValue: kIsWeb ? '' : 'https://info.mczihan.link:1443');
 
   void init({String? token}) {
     dio = Dio(BaseOptions(
@@ -35,10 +35,8 @@ class ApiService {
         'password': password,
       });
 
-  Future<Map<String, dynamic>> studentLogin(
-          int taskId, String studentNo, String password) =>
+  Future<Map<String, dynamic>> studentLogin(String studentNo, String password) =>
       _post('/api/student/login', {
-        'task_id': taskId,
         'student_no': studentNo,
         'password': password,
       });
@@ -77,22 +75,55 @@ class ApiService {
   Future<Map<String, dynamic>> getFormConfig(int taskId) async =>
       (await dio.get('/api/student/tasks/$taskId/config')).data;
 
-  // ===== 学生名单 =====
-  Future<List<dynamic>> listStudents(int taskId) async =>
-      (await dio.get('/api/admin/tasks/$taskId/students')).data;
+  // ===== 学生管理（管理员）=====
+  Future<List<dynamic>> listStudents() async => (await dio.get('/api/admin/students')).data;
 
-  Future<void> importStudentsWeb(int taskId, List<int> bytes, String filename) async {
-    final form = FormData.fromMap({
-      'file': MultipartFile.fromBytes(bytes, filename: filename),
-    });
-    await dio.post('/api/admin/tasks/$taskId/students/import', data: form);
-  }
+  Future<Map<String, dynamic>> createStudent(String studentNo, String name, String password) =>
+      _post('/api/admin/students', {'student_no': studentNo, 'name': name, 'password': password});
 
-  Future<void> resetStudentPassword(int sid, String pwd) async =>
-      dio.put('/api/admin/students/$sid/password', data: {'password': pwd});
+  Future<void> resetStudentPassword(int userId, String password) async =>
+      dio.put('/api/admin/students/$userId/password', data: {'password': password});
 
-  Future<void> deleteStudent(int sid) async =>
-      dio.delete('/api/admin/students/$sid');
+  Future<void> deleteStudent(int userId) async =>
+      dio.delete('/api/admin/students/$userId');
+
+  // ===== 组管理（管理员）=====
+  Future<List<dynamic>> listGroups() async => (await dio.get('/api/admin/groups')).data;
+
+  Future<Map<String, dynamic>> createGroup(String name, String description) =>
+      _post('/api/admin/groups', {'name': name, 'description': description});
+
+  Future<Map<String, dynamic>> updateGroup(int groupId, String name, String description) =>
+      _put('/api/admin/groups/$groupId', {'name': name, 'description': description});
+
+  Future<void> deleteGroup(int groupId) async =>
+      dio.delete('/api/admin/groups/$groupId');
+
+  Future<void> addGroupMember(int groupId, int userId) async =>
+      dio.post('/api/admin/groups/$groupId/members', data: {'student_user_id': userId});
+
+  Future<void> removeGroupMember(int groupId, int userId) async =>
+      dio.delete('/api/admin/groups/$groupId/members/$userId');
+
+  Future<List<dynamic>> listGroupMembers(int groupId) async =>
+      (await dio.get('/api/admin/groups/$groupId/members')).data;
+
+  // ===== 任务分配（管理员）=====
+  Future<void> assignUsersToTask(int taskId, List<int> userIds) async =>
+      dio.post('/api/admin/tasks/$taskId/assign/users', data: {'user_ids': userIds});
+
+  Future<void> assignGroupsToTask(int taskId, List<int> groupIds) async =>
+      dio.post('/api/admin/tasks/$taskId/assign/groups', data: {'group_ids': groupIds});
+
+  Future<Map<String, dynamic>> getTaskAssignments(int taskId) async =>
+      _get('/api/admin/tasks/$taskId/assignments');
+
+  Future<Map<String, dynamic>> getAvailableTasks() async =>
+      _get('/api/student/tasks/available');
+
+  // ===== 学生密码修改=====
+  Future<void> changeStudentPassword(String oldPassword, String newPassword) =>
+      _put('/api/student/password', {'old_password': oldPassword, 'new_password': newPassword});
 
   // ===== 提交 =====
   Future<List<dynamic>> listSubmissions(int taskId) async =>

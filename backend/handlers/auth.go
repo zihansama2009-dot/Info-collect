@@ -10,9 +10,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
-
-const APP_VERSION = "5.0.0"
 
 const (
 	adminUsernameChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
@@ -28,6 +27,13 @@ func randomString(length int, charset string) string {
 		b[i] = charset[r.Intn(len(charset))]
 	}
 	return string(b)
+}
+
+func checkStudentPassword(hash, password string) bool {
+	if hash == password {
+		return true
+	}
+	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
 }
 
 // InitAdmin 初始化默认管理员账号（仅当不存在时）。
@@ -68,6 +74,46 @@ func MigrateVersion(version string) {
 	models.DB.Model(&models.User{}).Where("version = ? OR version IS NULL OR version = ''", "").Update("version", version)
 }
 
+// MigrateToGlobalUsers 将旧版 Student 记录迁移为全局 StudentUser
+func MigrateToGlobalUsers(db *gorm.DB) {
+	var count int64
+	db.Model(&models.StudentUser{}).Count(&count)
+	if count > 0 {
+		return
+	}
+
+	var students []models.Student
+	if err := db.Find(&students).Error; err != nil {
+		return
+	}
+	if len(students) == 0 {
+		return
+	}
+
+	for _, s := range students {
+		user := models.StudentUser{
+			StudentNo: s.StudentNo,
+			Name:      s.Name,
+			PasswordHash: s.Password, // plaintext from old system
+			MustChangePassword: true,
+		}
+		if err := db.Create(&user).Error; err != nil {
+			continue
+		}
+
+		var submissions []models.Submission
+		if err := db.Where("student_id = ?", s.ID).Find(&submissions).Error; err != nil {
+			continue
+		}
+		for _, sub := range submissions {
+			sub.StudentID = user.ID
+			db.Save(&sub)
+		}
+	}
+
+	db.Exec("DELETE FROM students")
+}
+
 // AdminLogin 管理员登录
 func AdminLogin(c *gin.Context) {
 	var req struct {
@@ -97,10 +143,9 @@ func AdminLogin(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"token": token, "username": user.Username})
 }
 
-// StudentLogin 学生登录（学号 + 密码，针对某个任务）
+// StudentLogin 学生登录（学号 + 密码，全局账号）
 func StudentLogin(c *gin.Context) {
 	var req struct {
-		TaskID    uint   `json:"task_id" binding:"required"`
 		StudentNo string `json:"student_no" binding:"required"`
 		Password  string `json:"password" binding:"required"`
 	}
@@ -109,36 +154,25 @@ func StudentLogin(c *gin.Context) {
 		return
 	}
 
-	var student models.Student
-	if err := models.DB.Where("task_id = ? AND student_no = ?", req.TaskID, req.StudentNo).First(&student).Error; err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "学号或密码错误"})
-		return
-	}
-	if student.Password != req.Password {
+	var user models.StudentUser
+	if err := models.DB.Where("student_no = ?", req.StudentNo).First(&user).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "学号或密码错误"})
 		return
 	}
 
-	// 校验任务是否开放
-	var task models.Task
-	if err := models.DB.First(&task, req.TaskID).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "任务不存在"})
-		return
-	}
-	if task.Status != "open" {
-		c.JSON(http.StatusForbidden, gin.H{"error": "该任务已关闭填报"})
+	if !checkStudentPassword(user.PasswordHash, req.Password) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "学号或密码错误"})
 		return
 	}
 
 	token, _ := middleware.GenerateToken(middleware.Claims{
-		Role:      "student",
-		TaskID:    student.TaskID,
-		StudentID: student.ID,
+		Role:       "student",
+		StudentID:  user.ID,
 	})
 	c.JSON(http.StatusOK, gin.H{
-		"token":   token,
-		"name":    student.Name,
-		"task_id": student.TaskID,
+		"token":                token,
+		"name":                 user.Name,
+		"must_change_password": user.MustChangePassword,
 	})
 }
 
@@ -220,7 +254,7 @@ func GetAdminInfo(c *gin.Context) {
 	}
 	version := user.Version
 	if version == "" {
-		version = APP_VERSION
+		version = "unknown"
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"username": user.Username,
@@ -228,7 +262,16 @@ func GetAdminInfo(c *gin.Context) {
 	})
 }
 
-// GetVersion 返回应用版本号
+// GetVersion 返回应用版本号（从数据库读取）
 func GetVersion(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"version": APP_VERSION})
+	var user models.User
+	if err := models.DB.First(&user).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{"version": "unknown"})
+		return
+	}
+	version := user.Version
+	if version == "" {
+		version = "unknown"
+	}
+	c.JSON(http.StatusOK, gin.H{"version": version})
 }

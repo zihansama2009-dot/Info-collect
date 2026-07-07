@@ -7,7 +7,8 @@ import '../../providers/providers.dart';
 import '../../theme/m3e_theme.dart';
 
 class StudentFillPage extends ConsumerStatefulWidget {
-  const StudentFillPage({super.key});
+  final int taskId;
+  const StudentFillPage({super.key, required this.taskId});
 
   @override
   ConsumerState<StudentFillPage> createState() => _StudentFillPageState();
@@ -28,14 +29,9 @@ class _StudentFillPageState extends ConsumerState<StudentFillPage> {
   }
 
   Future<void> _load() async {
-    final auth = ref.read(authProvider);
-    if (auth.taskId == null) {
-      if (mounted) context.go('/s/login');
-      return;
-    }
     try {
       final api = ref.read(apiProvider);
-      final cfg = await api.getFormConfig(auth.taskId!);
+      final cfg = await api.getFormConfig(widget.taskId);
       _task = Task.fromJson(cfg['task'] as Map<String, dynamic>);
       _fields = (cfg['fields'] as List)
           .map((e) => FormField.fromJson(e as Map<String, dynamic>))
@@ -96,10 +92,7 @@ class _StudentFillPageState extends ConsumerState<StudentFillPage> {
       appBar: AppBar(
         leading: IconButton(
             icon: const Icon(Icons.arrow_back),
-            onPressed: () async {
-              await ref.read(authProvider.notifier).logout();
-              if (mounted) context.go('/');
-            }),
+            onPressed: () => context.go('/student/tasks')),
         title: Text(_task?.title ?? '填报'),
       ),
       body: _loading

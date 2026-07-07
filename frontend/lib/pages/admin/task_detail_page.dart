@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import '../../models/models.dart';
 import '../../providers/providers.dart';
 import '../../services/api_service.dart';
-import '../../services/web_io.dart' if (dart.library.html) '../../services/web_io_web.dart';
 import '../../theme/m3e_theme.dart';
 
 class TaskDetailPage extends ConsumerStatefulWidget {
@@ -30,11 +29,14 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
     final api = ref.read(apiProvider);
     final taskJson = await api.getFormConfig(widget.taskId);
     final stats = await api.taskStats(widget.taskId);
-    final students = await api.listStudents(widget.taskId);
+    final assignments = await api.getTaskAssignments(widget.taskId);
+    final userCount = ((assignments['users'] as List?) ?? []).length;
+    final groupCount = ((assignments['groups'] as List?) ?? []).length;
     return {
       'task': Task.fromJson(taskJson['task'] as Map<String, dynamic>),
       'stats': stats,
-      'studentCount': (students as List).length,
+      'userCount': userCount,
+      'groupCount': groupCount,
     };
   }
 
@@ -46,26 +48,6 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
           {'status': task.isOpen ? 'closed' : 'open'},
         );
     _refresh();
-  }
-
-  Future<void> _importStudents() async {
-    final bytes = await pickFileBytes();
-    if (bytes == null) return;
-    try {
-      await ref
-          .read(apiProvider)
-          .importStudentsWeb(widget.taskId, bytes, 'students.xlsx');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('导入成功')));
-        _refresh();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('导入失败: $e')));
-      }
-    }
   }
 
   @override
@@ -88,7 +70,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
           if (snap.hasError) return Center(child: Text('加载失败: ${snap.error}'));
           final task = snap.data!['task'] as Task;
           final stats = snap.data!['stats'] as Map<String, dynamic>;
-          final studentCount = snap.data!['studentCount'] as int;
+          final userCount = snap.data!['userCount'] as int;
+          final groupCount = snap.data!['groupCount'] as int;
 
           return ListView(
             padding: EdgeInsets.all(m3e.spacing.md),
@@ -123,7 +106,8 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
                       Wrap(
                         spacing: m3e.spacing.sm,
                         children: [
-                          _statChip(cs, '学生', studentCount.toString()),
+                          _statChip(cs, '用户', userCount.toString()),
+                          _statChip(cs, '组', groupCount.toString()),
                           _statChip(cs, '已提交',
                               stats['submitted']?.toString() ?? '0'),
                           _statChip(cs, '未提交',
@@ -142,17 +126,10 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
                 onTap: () => context.go('/admin/tasks/${widget.taskId}/fields'),
               ),
               _ActionTile(
-                icon: Icons.upload_file,
-                title: '导入学生名单',
-                subtitle: 'Excel 表头需含「学号」「姓名」「密码」',
-                onTap: () {
-                  if (!kIsWeb) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('请在网页端导入名单')));
-                    return;
-                  }
-                  _importStudents();
-                },
+                icon: Icons.assignment_ind,
+                title: '分配用户/组',
+                subtitle: '选择可以填报此任务的学生或组',
+                onTap: () => context.go('/admin/tasks/${widget.taskId}/assign'),
               ),
               _ActionTile(
                 icon: Icons.people_outline,
@@ -192,7 +169,6 @@ class _TaskDetailPageState extends ConsumerState<TaskDetailPage> {
   Future<void> _showSubmissions() async {
     final list = await ref.read(apiProvider).listSubmissions(widget.taskId);
     if (!mounted) return;
-    final m3e = M3ETheme.of(context);
     showDialog(
       context: context,
       builder: (c) => AlertDialog(

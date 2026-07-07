@@ -116,6 +116,16 @@ class _AdminHomePageState extends ConsumerState<AdminHomePage> {
         title: const Text('任务管理'),
         actions: [
           IconButton(
+            tooltip: '学生管理',
+            onPressed: () => context.go('/admin/students'),
+            icon: const Icon(Icons.people),
+          ),
+          IconButton(
+            tooltip: '组管理',
+            onPressed: () => context.go('/admin/groups'),
+            icon: const Icon(Icons.group_work),
+          ),
+          IconButton(
             tooltip: '账号设置',
             onPressed: () => context.go('/admin/settings'),
             icon: const Icon(Icons.settings),

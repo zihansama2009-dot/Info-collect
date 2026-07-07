@@ -6,9 +6,14 @@ import 'providers/providers.dart';
 import 'pages/admin/admin_login_page.dart';
 import 'pages/admin/admin_home_page.dart';
 import 'pages/admin/admin_settings_page.dart';
+import 'pages/admin/admin_student_list_page.dart';
+import 'pages/admin/admin_group_list_page.dart';
+import 'pages/admin/admin_task_assign_page.dart';
 import 'pages/admin/task_detail_page.dart';
 import 'pages/admin/form_field_edit_page.dart';
 import 'pages/student/student_login_page.dart';
+import 'pages/student/student_change_password_page.dart';
+import 'pages/student/student_task_select_page.dart';
 import 'pages/student/student_fill_page.dart';
 import 'theme/m3e_theme.dart';
 
@@ -35,7 +40,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         return '/admin/login';
       }
       if (path == '/' && loggedIn) {
-        return isAdmin ? '/admin' : '/student/fill';
+        return isAdmin ? '/admin' : '/student/tasks';
+      }
+      // 学生已登录但访问登录页，重定向到任务选择
+      if (path == '/s/login' && loggedIn && !isAdmin) {
+        return '/student/tasks';
       }
       return null;
     },
@@ -44,6 +53,12 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/admin/login', builder: (c, s) => const AdminLoginPage()),
       GoRoute(path: '/admin', builder: (c, s) => const AdminHomePage()),
       GoRoute(path: '/admin/settings', builder: (c, s) => const AdminSettingsPage()),
+      GoRoute(path: '/admin/students', builder: (c, s) => const AdminStudentListPage()),
+      GoRoute(path: '/admin/groups', builder: (c, s) => const AdminGroupListPage()),
+      GoRoute(path: '/admin/tasks/:id/assign', builder: (c, s) {
+        final id = int.parse(s.pathParameters['id']!);
+        return AdminTaskAssignPage(taskId: id);
+      }),
       GoRoute(path: '/admin/tasks/:id', builder: (c, s) {
         final id = int.parse(s.pathParameters['id']!);
         return TaskDetailPage(taskId: id);
@@ -52,11 +67,13 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         final id = int.parse(s.pathParameters['id']!);
         return FormFieldEditPage(taskId: id);
       }),
-      GoRoute(path: '/s/login', builder: (c, s) {
-        final taskId = int.tryParse(s.uri.queryParameters['task'] ?? '');
-        return StudentLoginPage(prefillTaskId: taskId);
+      GoRoute(path: '/s/login', builder: (c, s) => const StudentLoginPage()),
+      GoRoute(path: '/student/change-password', builder: (c, s) => const StudentChangePasswordPage()),
+      GoRoute(path: '/student/tasks', builder: (c, s) => const StudentTaskSelectPage()),
+      GoRoute(path: '/student/fill/:taskId', builder: (c, s) {
+        final taskId = int.parse(s.pathParameters['taskId']!);
+        return StudentFillPage(taskId: taskId);
       }),
-      GoRoute(path: '/student/fill', builder: (c, s) => const StudentFillPage()),
     ],
   );
 });

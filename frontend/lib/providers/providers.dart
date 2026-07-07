@@ -47,20 +47,19 @@ class AuthNotifier extends StateNotifier<AuthState> {
     state = AuthState(token: token, role: 'admin', displayName: res['username'] as String);
   }
 
-  Future<void> loginStudent(int taskId, String studentNo, String password) async {
-    final res = await ApiService.instance.studentLogin(taskId, studentNo, password);
+  Future<void> loginStudent(String studentNo, String password) async {
+    final res = await ApiService.instance.studentLogin(studentNo, password);
     final token = res['token'] as String;
     final sp = await SharedPreferences.getInstance();
     await sp.setString('token', token);
     await sp.setString('role', 'student');
     await sp.setString('name', res['name'] as String);
-    await sp.setInt('task_id', (res['task_id'] as num).toInt());
+    await sp.setBool('must_change_password', (res['must_change_password'] as bool? ?? false));
     ApiService.instance.setToken(token);
     state = AuthState(
       token: token,
       role: 'student',
       displayName: res['name'] as String,
-      taskId: (res['task_id'] as num).toInt(),
     );
   }
 
@@ -88,4 +87,16 @@ final versionProvider = FutureProvider<String>((ref) async {
 final adminInfoProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final api = ref.watch(apiProvider);
   return api.getAdminInfo();
+});
+
+/// 是否需要修改密码（学生首次登录）
+final mustChangePasswordProvider = FutureProvider<bool>((ref) async {
+  final sp = await SharedPreferences.getInstance();
+  return sp.getBool('must_change_password') ?? false;
+});
+
+/// 学生可用任务列表
+final availableTasksProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final api = ref.watch(apiProvider);
+  return api.getAvailableTasks();
 });

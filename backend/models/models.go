@@ -39,6 +39,47 @@ type Student struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// StudentUser 全局学生账号（独立于任务）
+type StudentUser struct {
+	ID                 uint      `gorm:"primaryKey" json:"id"`
+	StudentNo          string    `gorm:"uniqueIndex;size:64;not null" json:"student_no"`
+	Name               string    `gorm:"size:64;not null" json:"name"`
+	PasswordHash       string    `gorm:"size:255;not null" json:"-"`
+	MustChangePassword bool      `gorm:"default:true" json:"must_change_password"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+}
+
+// Group 学生组
+type Group struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	Name        string    `gorm:"size:128;not null" json:"name"`
+	Description string    `gorm:"size:255" json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+// GroupMember 组与学生的多对多关联
+type GroupMember struct {
+	GroupID       uint `gorm:"uniqueIndex:idx_group_member" json:"group_id"`
+	StudentUserID uint `gorm:"uniqueIndex:idx_group_member" json:"student_user_id"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+// TaskAssignment 任务与用户/组的关联（用户级）
+type TaskAssignment struct {
+	TaskID        uint `gorm:"uniqueIndex:idx_task_user" json:"task_id"`
+	StudentUserID uint `gorm:"uniqueIndex:idx_task_user" json:"student_user_id"`
+	CreatedAt     time.Time `json:"created_at"`
+}
+
+// TaskGroupAssignment 任务与组的关联（组级）
+type TaskGroupAssignment struct {
+	TaskID  uint `gorm:"uniqueIndex:idx_task_group" json:"task_id"`
+	GroupID uint `gorm:"uniqueIndex:idx_task_group" json:"group_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 // FormField 表单字段配置（双轨制：label 显示名 + export_header 导出列名）
 type FormField struct {
 	ID             uint   `gorm:"primaryKey" json:"id"`
