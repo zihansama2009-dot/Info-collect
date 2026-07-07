@@ -43,3 +43,5 @@ frontend/ios/Runner/GeneratedPluginRegistrant.*
 # OS
 .DS_Store
 Thumbs.db
+
+.qoder/
