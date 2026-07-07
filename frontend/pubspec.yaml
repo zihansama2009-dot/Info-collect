@@ -1,0 +1,27 @@
+name: class_form_frontend
+description: 班级动态信息收集系统前端（Flutter Web + Material 3 Expressive）
+publish_to: "none"
+version: 5.0.0
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # 文档指定 m3e_design 作为 MD3E 设计语言；由于该包在 pub.dev 上可能不可用，
+  # 本项目在 lib/theme/m3e_theme.dart 中实现了等价的 Tokens（spacing/typography/shapes），
+  # 以保证可独立编译运行。如需接入官方 m3e_design，取消下行注释即可。
+  # m3e_design: ^0.2.1
+  dynamic_color: ^1.7.0
+  go_router: ^14.0.0
+  flutter_riverpod: ^2.5.0
+  dio: ^5.4.0
+  shared_preferences: ^2.2.0
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /home/zihan/class-form/backend && go build -o /dev/null . 2>&1)",
+      "Bash(cd /home/zihan/class-form/backend && GOPROXY=https://goproxy.cn,direct HTTPS_PROXY=http://127.0.0.1:10808 HTTP_PROXY=http://127.0.0.1:10808 /usr/bin/go build -ldflags=\"-s -w\" -o class-form . 2>&1; echo \"exit=$?\")"
+    ]
+  }
+}
