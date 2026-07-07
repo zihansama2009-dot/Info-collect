@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"class-form/middleware"
@@ -16,8 +17,22 @@ import (
 // 保密字段脱敏：学生再次编辑时返回掩码 ******（管理员接口不受影响）
 func GetMySubmission(c *gin.Context) {
 	claims := c.MustGet("claims").(*middleware.Claims)
+
+	taskIDStr := c.Query("task_id")
+	taskID, err := strconv.ParseUint(taskIDStr, 10, 64)
+	if err != nil || taskID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少 task_id 参数"})
+		return
+	}
+
+	// 校验学生是否被分配到该任务
+	if !isStudentAssigned(uint(taskID), claims.StudentID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "未分配到此任务"})
+		return
+	}
+
 	var sub models.Submission
-	err := models.DB.Where("task_id = ? AND student_id = ?", claims.TaskID, claims.StudentID).First(&sub).Error
+	err = models.DB.Where("task_id = ? AND student_id = ?", taskID, claims.StudentID).First(&sub).Error
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"data": nil})
 		return
@@ -26,7 +41,7 @@ func GetMySubmission(c *gin.Context) {
 	json.Unmarshal([]byte(sub.Data), &data)
 
 	var fields []models.FormField
-	models.DB.Where("task_id = ?", claims.TaskID).Find(&fields)
+	models.DB.Where("task_id = ?", taskID).Find(&fields)
 	for _, f := range fields {
 		if f.IsConfidential {
 			key := strconvUint(f.ID)
@@ -43,6 +58,19 @@ func GetMySubmission(c *gin.Context) {
 func SubmitForm(c *gin.Context) {
 	claims := c.MustGet("claims").(*middleware.Claims)
 
+	taskIDStr := c.Query("task_id")
+	taskID, err := strconv.ParseUint(taskIDStr, 10, 64)
+	if err != nil || taskID == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "缺少 task_id 参数"})
+		return
+	}
+
+	// 校验学生是否被分配到该任务
+	if !isStudentAssigned(uint(taskID), claims.StudentID) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "未分配到此任务"})
+		return
+	}
+
 	var req map[string]interface{}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "参数错误"})
@@ -51,7 +79,7 @@ func SubmitForm(c *gin.Context) {
 
 	// 校验必填字段
 	var fields []models.FormField
-	models.DB.Where("task_id = ?", claims.TaskID).Find(&fields)
+	models.DB.Where("task_id = ?", taskID).Find(&fields)
 	for _, f := range fields {
 		if f.IsRequired {
 			val, ok := req[strconvUint(f.ID)]
@@ -63,9 +91,9 @@ func SubmitForm(c *gin.Context) {
 	}
 
 	// 事务内完成「查询→脱敏过滤→upsert」，避免并发重复提交
-	err := models.DB.Transaction(func(tx *gorm.DB) error {
+	err = models.DB.Transaction(func(tx *gorm.DB) error {
 		var sub models.Submission
-		findErr := tx.Where("task_id = ? AND student_id = ?", claims.TaskID, claims.StudentID).First(&sub).Error
+		findErr := tx.Where("task_id = ? AND student_id = ?", taskID, claims.StudentID).First(&sub).Error
 
 		// 保密字段智能过滤：值为掩码 ****** 时保留原值
 		if findErr == nil {
@@ -95,7 +123,7 @@ func SubmitForm(c *gin.Context) {
 			return tx.Save(&sub).Error
 		}
 		return tx.Create(&models.Submission{
-			TaskID:    claims.TaskID,
+			TaskID:    uint(taskID),
 			StudentID: claims.StudentID,
 			Data:      dataStr,
 		}).Error
@@ -108,10 +136,21 @@ func SubmitForm(c *gin.Context) {
 }
 
 // ListSubmissions 管理员查看任务的所有提交（含学生信息）
+// 查询已分配到该任务的全局学生（StudentUser），而非旧版按任务维度的 Student 表
 func ListSubmissions(c *gin.Context) {
 	taskID := c.Param("id")
-	var students []models.Student
-	models.DB.Where("task_id = ?", taskID).Order("student_no asc").Find(&students)
+	tid := parseUint(taskID)
+
+	// 获取所有已分配学生 ID
+	studentIDs := assignedStudentIDs(tid)
+	if len(studentIDs) == 0 {
+		c.JSON(http.StatusOK, []interface{}{})
+		return
+	}
+
+	// 查询这些学生的信息
+	var students []models.StudentUser
+	models.DB.Where("id IN ?", studentIDs).Order("student_no asc").Find(&students)
 
 	var subs []models.Submission
 	models.DB.Where("task_id = ?", taskID).Find(&subs)
@@ -129,16 +168,16 @@ func ListSubmissions(c *gin.Context) {
 			json.Unmarshal([]byte(sub.Data), &m)
 			data = m
 			result = append(result, gin.H{
-				"student":     st,
-				"submitted":   true,
-				"data":        data,
-				"updated_at":  sub.UpdatedAt,
+				"student":    st,
+				"submitted":  true,
+				"data":       data,
+				"updated_at": sub.UpdatedAt,
 			})
 		} else {
 			result = append(result, gin.H{
-				"student":    st,
-				"submitted":  false,
-				"data":       nil,
+				"student":   st,
+				"submitted": false,
+				"data":      nil,
 			})
 		}
 	}

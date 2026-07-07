@@ -1,15 +1,19 @@
 # 📘 班级动态信息收集系统 (V5.0)
 
-轻量级、免运维、高颜值的班级信息收集系统。管理员通过 Web 后台导入学生名单、自定义表单结构并导出 Excel；学生通过移动端浏览器访问链接，使用统一分配的密码登录并完成填报。
+轻量级、免运维、高颜值的班级信息收集系统。管理员通过 Web 后台管理全局学生账号与组、自定义表单结构并导出 Excel；学生通过移动端浏览器登录后查看可填报任务并完成提交。
 
 ## 核心特性
 
+- **全局学生账号**：学号全局唯一，独立于任务；bcrypt 哈希存储密码，首次登录强制改密。旧版按任务维度的 `Student` 表启动时自动迁移为 `StudentUser`。
+- **批量导入学生**：通过 xlsx 一键导入学生名单（A=学号, B=姓名, C=密码可选），支持默认密码、去重、错误明细回显。
+- **组管理**：管理员可创建组、增删成员；任务可分配给用户或组，组内成员自动继承任务权限。
 - **双轨制表头映射**：题目「显示名 (`label`)」与「Excel 导出列名 (`export_header`)」分离，口语化题目也能导出官方格式表头，留空自动降级。
 - **流式 Excel 导出**：内存生成 + 流式写入 HTTP 响应，避免并发临时文件冲突（基于 `excelize`）。
 - **Material 3 Expressive UI**：通过 MD3E Tokens（spacing / typography / shapes）告别硬编码像素值。
 - **单文件部署**：Go Embed 打包 Flutter Web 产物，双击即用，配合内网穿透全网可访。
 - **随机管理员初始化**：数据库无管理员时自动生成高强度随机账号密码，启动日志一次性打印明文凭证。
 - **版本追踪**：管理员账号绑定应用版本号，支持前端查看当前版本。
+- **APK 构建**：Android 客户端通过 `--dart-define=BACKEND_URL=...` 注入后端地址，不再硬编码。
 
 ## 技术栈
 
@@ -23,12 +27,13 @@
 
 ```
 class-form/
+├── VERSION                     # 应用版本号（后端启动时读取）
 ├── backend/
 │   ├── main.go                 # 入口：DB/路由/embed静态资源/SPA回退
 │   ├── go.mod
-│   ├── models/models.go        # 数据模型（含双轨制 FormField）
+│   ├── models/models.go        # 数据模型（StudentUser/Group/TaskAssignment/FormField 等）
 │   ├── middleware/auth.go      # JWT 认证中间件
-│   ├── handlers/               # auth/task/form_field/student/submission/export/dashboard
+│   ├── handlers/               # auth/task/form_field/student_user/group/task_assignment/export
 │   └── web/                    # Flutter Web 构建产物（go:embed）
 └── frontend/
     ├── pubspec.yaml
@@ -98,29 +103,43 @@ go build -ldflags="-s -w" -o class-form main.go
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
 | POST | `/api/admin/login` | 管理员登录 |
-| POST | `/api/student/login` | 学生登录 |
+| POST | `/api/student/login` | 学生登录（仅学号+密码，无需任务ID） |
 | GET/POST | `/api/admin/tasks` | 任务列表/创建 |
 | GET/PUT/DELETE | `/api/admin/tasks/:id` | 任务详情/更新/删除 |
+| GET | `/api/admin/tasks/:id/stats` | 任务统计 |
 | GET/PUT | `/api/admin/tasks/:id/fields` | 表单字段查询/保存 |
-| GET/POST | `/api/admin/tasks/:id/students` `/import` | 名单查询/导入 |
 | GET | `/api/admin/tasks/:id/submissions` | 提交查看 |
 | GET | `/api/admin/tasks/:id/export` | Excel 流式导出 |
-| GET/POST | `/api/student/submission` `/submit` | 学生提交 |
-| GET | `/api/student/tasks/:id/config` | 任务表单配置 |
 | PUT | `/api/admin/password` | 管理员修改密码 |
 | PUT | `/api/admin/username` | 管理员修改用户名 |
-| GET | `/api/admin/me` | 获取当前管理员信息（用户名、版本） |
+| GET | `/api/admin/me` | 获取当前管理员信息 |
 | GET | `/api/admin/version` | 获取应用版本号 |
+| GET/POST/DELETE | `/api/admin/students` | 全局学生 CRUD |
+| POST | `/api/admin/students/import` | 批量导入学生（xlsx） |
+| PUT | `/api/admin/students/:id/password` | 重置学生密码 |
+| GET/POST/PUT/DELETE | `/api/admin/groups` | 组 CRUD |
+| POST/DELETE/GET | `/api/admin/groups/:id/members` | 组成员管理 |
+| POST | `/api/admin/tasks/:id/assign/users` | 分配用户到任务 |
+| POST | `/api/admin/tasks/:id/assign/groups` | 分配组到任务 |
+| GET | `/api/admin/tasks/:id/assignments` | 获取任务分配情况 |
+| GET/POST | `/api/student/submission` `/submit` | 学生提交 |
+| GET | `/api/student/tasks/available` | 学生可用任务列表 |
+| GET | `/api/student/tasks/:id/config` | 任务表单配置（无需登录） |
+| PUT | `/api/student/password` | 学生修改密码 |
 
 ## 管理后台功能
 
-- **任务管理**：创建、查看、关闭/开启任务，导入学生名单（Excel），导出填报数据（Excel）
+- **任务管理**：创建、查看、关闭/开启任务，导出填报数据（Excel）
 - **表单字段配置**：自定义题目显示名与导出表头（双轨制），支持文本/数字/日期/下拉选择类型，可设置必填和保密字段
+- **学生管理**：全局学生账号 CRUD、批量 xlsx 导入、重置密码
+- **组管理**：创建组、增删成员，任务可按用户或组分配
+- **任务分配**：将用户或组分配到任务，组内成员自动继承权限
 - **账号设置**：修改管理员用户名和密码，查看应用版本号
 
 ## 注意事项
 
 - JWT 签名密钥硬编码在 `backend/middleware/auth.go:12`，生产环境暴露前请务必修改
-- 学生密码以明文存储在数据库中，请注意数据安全
+- 学生密码使用 bcrypt 哈希存储；旧版明文密码（legacy `Student` 表）在迁移后保留，学生改密后自动升级为 bcrypt
 - SQLite 通过 `SetMaxOpenConns(1)` 串行化写操作，避免 "database is locked"
 - 数据库 schema 通过 GORM `AutoMigrate` 自动更新，无版本化迁移工具
+- CORS 全开放（`AllowAllOrigins: true`），适合单文件同源部署；若前后端分离代理需自行收紧

@@ -9,6 +9,53 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// isStudentAssigned 检查学生是否被分配到指定任务（直接或通过组）
+func isStudentAssigned(taskID, studentUserID uint) bool {
+	// 直接分配
+	var count int64
+	models.DB.Model(&models.TaskAssignment{}).
+		Where("task_id = ? AND student_user_id = ?", taskID, studentUserID).
+		Count(&count)
+	if count > 0 {
+		return true
+	}
+	// 通过组分配
+	models.DB.Model(&models.TaskGroupAssignment{}).
+		Joins("JOIN group_members ON group_members.group_id = task_group_assignments.group_id").
+		Where("task_group_assignments.task_id = ? AND group_members.student_user_id = ?", taskID, studentUserID).
+		Count(&count)
+	return count > 0
+}
+
+// assignedStudentIDs 返回任务的所有已分配学生 ID（直接 + 组），去重
+func assignedStudentIDs(taskID uint) []uint {
+	idSet := make(map[uint]bool)
+
+	// 直接分配
+	var userAssigns []models.TaskAssignment
+	models.DB.Where("task_id = ?", taskID).Find(&userAssigns)
+	for _, a := range userAssigns {
+		idSet[a.StudentUserID] = true
+	}
+
+	// 通过组分配
+	var groupAssigns []models.TaskGroupAssignment
+	models.DB.Where("task_id = ?", taskID).Find(&groupAssigns)
+	for _, g := range groupAssigns {
+		var members []models.GroupMember
+		models.DB.Where("group_id = ?", g.GroupID).Find(&members)
+		for _, m := range members {
+			idSet[m.StudentUserID] = true
+		}
+	}
+
+	ids := make([]uint, 0, len(idSet))
+	for id := range idSet {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // AssignUsersToTask 分配用户到任务
 func AssignUsersToTask(c *gin.Context) {
 	taskID := c.Param("id")

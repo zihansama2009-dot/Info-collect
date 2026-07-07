@@ -38,7 +38,7 @@ class _StudentFillPageState extends ConsumerState<StudentFillPage> {
           .toList();
 
       // 加载已有提交
-      final existing = await api.getMySubmission();
+      final existing = await api.getMySubmission(widget.taskId);
       if (existing['data'] != null) {
         final data = Map<String, dynamic>.from(existing['data'] as Map);
         for (final f in _fields) {
@@ -67,7 +67,7 @@ class _StudentFillPageState extends ConsumerState<StudentFillPage> {
     }
     setState(() => _saving = true);
     try {
-      await ref.read(apiProvider).submitForm(_values);
+      await ref.read(apiProvider).submitForm(widget.taskId, _values);
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('提交成功！')));

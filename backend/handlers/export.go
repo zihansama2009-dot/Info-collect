@@ -14,14 +14,18 @@ import (
 // 核心逻辑：导出表头优先使用 export_header，为空则降级使用 label
 func ExportTaskData(c *gin.Context) {
 	taskID := c.Param("id")
+	tid := parseUint(taskID)
 
 	// 1. 获取表单字段配置（包含 export_header）
 	var fields []models.FormField
 	models.DB.Where("task_id = ?", taskID).Order("sort_order asc").Find(&fields)
 
-	// 2. 获取学生名单及提交数据
-	var students []models.Student
-	models.DB.Where("task_id = ?", taskID).Order("student_no asc").Find(&students)
+	// 2. 获取已分配学生名单（全局 StudentUser）及提交数据
+	studentIDs := assignedStudentIDs(tid)
+	var students []models.StudentUser
+	if len(studentIDs) > 0 {
+		models.DB.Where("id IN ?", studentIDs).Order("student_no asc").Find(&students)
+	}
 
 	var subs []models.Submission
 	models.DB.Where("task_id = ?", taskID).Find(&subs)

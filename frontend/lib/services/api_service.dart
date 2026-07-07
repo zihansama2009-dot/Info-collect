@@ -139,11 +139,11 @@ class ApiService {
   Future<List<dynamic>> listSubmissions(int taskId) async =>
       (await dio.get('/api/admin/tasks/$taskId/submissions')).data;
 
-  Future<Map<String, dynamic>> getMySubmission() async =>
-      (await dio.get('/api/student/submission')).data;
+  Future<Map<String, dynamic>> getMySubmission(int taskId) async =>
+      (await dio.get('/api/student/submission', queryParameters: {'task_id': taskId})).data;
 
-  Future<void> submitForm(Map<String, dynamic> data) async =>
-      dio.post('/api/student/submit', data: data);
+  Future<void> submitForm(int taskId, Map<String, dynamic> data) async =>
+      dio.post('/api/student/submit', queryParameters: {'task_id': taskId}, data: data);
 
   // ===== 导出（Web 端触发浏览器下载，APK 端为空操作）=====
   void triggerExcelDownload(int taskId) {
