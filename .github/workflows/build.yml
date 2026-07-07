@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build-frontend:
@@ -87,8 +87,11 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: 1
         run: |
-          $suffix = if ("${{ matrix.goos }}" -eq "windows") { ".exe" } else { "" }
-          go build -ldflags="-s -w" -o "class-form$suffix" main.go
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            go build -ldflags="-s -w" -o "class-form.exe" main.go
+          else
+            go build -ldflags="-s -w" -o "class-form" main.go
+          fi
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
