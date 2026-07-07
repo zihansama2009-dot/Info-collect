@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../providers/providers.dart';
+import '../../services/web_io.dart' if (dart.library.html) '../../services/web_io_web.dart';
 import '../../theme/m3e_theme.dart';
 
 class AdminStudentListPage extends ConsumerStatefulWidget {
@@ -116,6 +117,117 @@ class _AdminStudentListPageState extends ConsumerState<AdminStudentListPage> {
     }
   }
 
+  Future<void> _importStudents() async {
+    final bytes = await pickFileBytes();
+    if (bytes == null || bytes.isEmpty) return;
+
+    final pwdCtrl = TextEditingController(text: '123456');
+    final defaultPwd = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('批量导入学生'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('表格格式：第一行为表头（跳过），A=学号, B=姓名, C=密码(可选)'),
+            const SizedBox(height: 16),
+            TextField(
+              controller: pwdCtrl,
+              decoration: const InputDecoration(
+                labelText: '默认密码（密码列为空时使用）',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(c, pwdCtrl.text.trim()), child: const Text('导入')),
+        ],
+      ),
+    );
+    if (defaultPwd == null || defaultPwd.isEmpty) return;
+
+    try {
+      final result = await ref.read(apiProvider).importStudents(bytes, defaultPassword: defaultPwd);
+      if (!mounted) return;
+      _showImportResult(result);
+      setState(() => _future = _load());
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入失败: $e')));
+    }
+  }
+
+  void _showImportResult(Map<String, dynamic> result) {
+    final created = result['created'] ?? 0;
+    final skipped = result['skipped'] ?? 0;
+    final failed = result['failed'] ?? 0;
+    final total = result['total'] ?? 0;
+    final errors = (result['errors'] as List?) ?? [];
+    final skippedRows = (result['skipped_rows'] as List?) ?? [];
+
+    showDialog<void>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('导入结果'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('总行数: $total'),
+              Text('成功: $created', style: TextStyle(color: Colors.green)),
+              Text('跳过(已存在): $skipped', style: TextStyle(color: Colors.orange)),
+              Text('失败: $failed', style: TextStyle(color: Colors.red)),
+              if (errors.isNotEmpty || skippedRows.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Divider(),
+                if (errors.isNotEmpty) ...[
+                  const Text('错误详情:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                  const SizedBox(height: 4),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 120),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: errors.length,
+                      itemBuilder: (context, i) {
+                        final e = errors[i] as Map<String, dynamic>;
+                        return Text('第${e['row']}行 ${e['student_no'] ?? ''}: ${e['reason']}',
+                            style: const TextStyle(fontSize: 12, color: Colors.red));
+                      },
+                    ),
+                  ),
+                ],
+                if (skippedRows.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  const Text('跳过详情:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange)),
+                  const SizedBox(height: 4),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 100),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: skippedRows.length,
+                      itemBuilder: (context, i) {
+                        final e = skippedRows[i] as Map<String, dynamic>;
+                        return Text('第${e['row']}行 ${e['student_no'] ?? ''}: ${e['reason']}',
+                            style: const TextStyle(fontSize: 12, color: Colors.orange));
+                      },
+                    ),
+                  ),
+                ],
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          FilledButton(onPressed: () => Navigator.pop(c), child: const Text('确定')),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -125,6 +237,7 @@ class _AdminStudentListPageState extends ConsumerState<AdminStudentListPage> {
         leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: () => context.go('/admin')),
         title: const Text('学生管理'),
         actions: [
+          IconButton(onPressed: _importStudents, tooltip: '批量导入', icon: const Icon(Icons.upload_file)),
           IconButton(onPressed: _createStudent, icon: const Icon(Icons.add)),
         ],
       ),

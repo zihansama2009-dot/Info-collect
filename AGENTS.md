@@ -82,6 +82,7 @@ cd backend && go build -ldflags="-s -w" -o class-form main.go
 | GET | `/api/admin/me` | 获取当前管理员信息 |
 | GET | `/api/admin/version` | 获取应用版本号 |
 | GET/POST/DELETE | `/api/admin/students` | 全局学生 CRUD |
+| POST | `/api/admin/students/import` | 批量导入学生（xlsx，A=学号 B=姓名 C=密码可选） |
 | PUT | `/api/admin/students/:id/password` | 重置学生密码 |
 | GET/POST/PUT/DELETE | `/api/admin/groups` | 组 CRUD |
 | POST/DELETE | `/api/admin/groups/:id/members` | 组成员管理 |

@@ -87,6 +87,16 @@ class ApiService {
   Future<void> deleteStudent(int userId) async =>
       dio.delete('/api/admin/students/$userId');
 
+  Future<Map<String, dynamic>> importStudents(List<int> bytes, {String defaultPassword = ''}) async {
+    final form = FormData.fromMap({
+      'file': MultipartFile.fromBytes(bytes, filename: 'students.xlsx'),
+    });
+    final path = defaultPassword.isEmpty
+        ? '/api/admin/students/import'
+        : '/api/admin/students/import?default_password=${Uri.encodeQueryComponent(defaultPassword)}';
+    return Map<String, dynamic>.from((await dio.post(path, data: form)).data);
+  }
+
   // ===== 组管理（管理员）=====
   Future<List<dynamic>> listGroups() async => (await dio.get('/api/admin/groups')).data;
 

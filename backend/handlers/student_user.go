@@ -1,12 +1,15 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 
 	"class-form/middleware"
 	"class-form/models"
 
 	"github.com/gin-gonic/gin"
+	"github.com/xuri/excelize/v2"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -112,4 +115,125 @@ func ChangeStudentPassword(c *gin.Context) {
 	user.MustChangePassword = false
 	models.DB.Save(&user)
 	c.JSON(http.StatusOK, gin.H{"message": "密码修改成功"})
+}
+
+// ImportStudents 批量导入学生账号（xlsx）
+// 表格格式：第一行为表头（跳过），A=学号, B=姓名, C=密码(可选，为空则用默认密码)
+// 默认密码通过 query 参数 default_password 指定，未指定则为 "123456"
+func ImportStudents(c *gin.Context) {
+	file, _, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "请上传 xlsx 文件"})
+		return
+	}
+	defer file.Close()
+
+	f, err := excelize.OpenReader(file)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无法解析 xlsx 文件"})
+		return
+	}
+	defer f.Close()
+
+	sheetName := f.GetSheetName(0)
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无法读取工作表"})
+		return
+	}
+	if len(rows) < 2 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "文件无数据行"})
+		return
+	}
+
+	defaultPwd := strings.TrimSpace(c.Query("default_password"))
+	if defaultPwd == "" {
+		defaultPwd = "123456"
+	}
+	if len(defaultPwd) < 6 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "默认密码至少6位"})
+		return
+	}
+
+	// 预加载已存在的学号，避免逐行查询
+	var existing []models.StudentUser
+	models.DB.Find(&existing)
+	existSet := make(map[string]bool, len(existing))
+	for _, u := range existing {
+		existSet[u.StudentNo] = true
+	}
+
+	type failRow struct {
+		Row       int    `json:"row"`
+		StudentNo string `json:"student_no"`
+		Reason    string `json:"reason"`
+	}
+
+	created := 0
+	skipped := 0
+	var fails []failRow
+	var skippedRows []failRow
+	seen := make(map[string]bool)
+
+	for i := 1; i < len(rows); i++ {
+		row := rows[i]
+		rowNum := i + 1
+
+		// 跳过空行
+		if len(row) == 0 {
+			continue
+		}
+		studentNo := strings.TrimSpace(cellAt(row, 0))
+		name := strings.TrimSpace(cellAt(row, 1))
+		pwd := strings.TrimSpace(cellAt(row, 2))
+
+		if studentNo == "" || name == "" {
+			fails = append(fails, failRow{Row: rowNum, StudentNo: studentNo, Reason: "学号或姓名为空"})
+			continue
+		}
+		if existSet[studentNo] || seen[studentNo] {
+			skippedRows = append(skippedRows, failRow{Row: rowNum, StudentNo: studentNo, Reason: "学号已存在"})
+			skipped++
+			continue
+		}
+		if pwd == "" {
+			pwd = defaultPwd
+		}
+		if len(pwd) < 6 {
+			fails = append(fails, failRow{Row: rowNum, StudentNo: studentNo, Reason: "密码不足6位"})
+			continue
+		}
+
+		hash, _ := bcrypt.GenerateFromPassword([]byte(pwd), bcrypt.DefaultCost)
+		user := models.StudentUser{
+			StudentNo:          studentNo,
+			Name:               name,
+			PasswordHash:       string(hash),
+			MustChangePassword: true,
+		}
+		if err := models.DB.Create(&user).Error; err != nil {
+			fails = append(fails, failRow{Row: rowNum, StudentNo: studentNo, Reason: fmt.Sprintf("写入失败: %v", err)})
+			continue
+		}
+		existSet[studentNo] = true
+		seen[studentNo] = true
+		created++
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"created":       created,
+		"skipped":       skipped,
+		"failed":        len(fails),
+		"errors":        fails,
+		"skipped_rows":  skippedRows,
+		"total":         len(rows) - 1,
+	})
+}
+
+// cellAt 安全获取切片指定位置元素
+func cellAt(row []string, idx int) string {
+	if idx < len(row) {
+		return row[idx]
+	}
+	return ""
 }

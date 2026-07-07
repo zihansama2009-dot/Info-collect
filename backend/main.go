@@ -127,6 +127,7 @@ func main() {
 		// 全局学生管理（管理员）
 		admin.GET("/students", handlers.ListStudents)
 		admin.POST("/students", handlers.CreateStudent)
+		admin.POST("/students/import", handlers.ImportStudents)
 		admin.PUT("/students/:id/password", handlers.ResetStudentPassword)
 		admin.DELETE("/students/:id", handlers.DeleteStudent)
 
